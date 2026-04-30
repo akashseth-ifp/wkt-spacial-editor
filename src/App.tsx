@@ -3,10 +3,11 @@ import FormSection from "./components/core/FormSection"
 import GridSection from "./components/core/GridSection"
 
 export const App = () => {
-  const [wktData, setWktData] = useState("")
+  const initPolygon = ""
+  const [wktData, setWktData] = useState(initPolygon)
 
   const handleReset = () => {
-    setWktData("")
+    setWktData(initPolygon)
     console.log("Form reset")
   }
 
@@ -16,7 +17,7 @@ export const App = () => {
   
   return (<div className="flex flex-col items-center h-screen">
     <h1 className="text-4xl font-bold my-4">Welcome to WKT Spatial Editor</h1>
-    <GridSection />
+    <GridSection polygonString={wktData} />
     <FormSection wktData={wktData} setWktData={setWktData} handleReset={handleReset} />
   </div>
   )
