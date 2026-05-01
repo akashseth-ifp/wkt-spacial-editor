@@ -17,7 +17,7 @@ export const App = () => {
   
   return (<div className="flex flex-col items-center h-screen">
     <h1 className="text-4xl font-bold my-4">Welcome to WKT Spatial Editor</h1>
-    <GridSection polygonString={wktData} />
+    <GridSection polygonString={wktData} onPolygonChange={setWktData} />
     <FormSection wktData={wktData} setWktData={setWktData} handleReset={handleReset} />
   </div>
   )

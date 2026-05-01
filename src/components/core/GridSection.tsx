@@ -3,10 +3,13 @@ import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
 import { Plus, Minus } from 'lucide-react';
 import { WKTErrorAlert } from '@/components/custom/WKTErrorAlert';
-import { SCALE_FACTOR, wktToPoints, type Point } from '@/lib/utils';
+import { PolygonEditor } from '@/components/custom/PolygonEditor';
+import { SCALE_FACTOR, wktToPoints, canvasPointsToWkt, type Point } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 type GridSectionProps = {
   polygonString: string;
+  onPolygonChange: (wkt: string) => void;
 };
 
 type ViewState = {
@@ -14,6 +17,15 @@ type ViewState = {
   offsetX: number;
   offsetY: number;
 };
+
+type EditorState = {
+  sourcePolygon: string;
+  editablePoints: Point[];
+  view: ViewState;
+};
+
+const EDGE_PAN_THRESHOLD = 48;
+const EDGE_PAN_STEP = 18;
 
 const scalePoints = (points: Point[]): Point[] =>
   points.map(point => ({
@@ -51,7 +63,7 @@ const computeAutoFit = (
   };
 };
 
-export const GridSection = ({ polygonString }: GridSectionProps) => {
+export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps) => {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
 
@@ -76,20 +88,25 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
   const parseError = parsingResult.error;
 
   const points = useMemo(() => scalePoints(rawPoints), [rawPoints]);
-
   const initialView = useMemo(
     () => computeAutoFit(points, dimensions),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [polygonString]
+    [dimensions, points]
   );
+  const [editorState, setEditorState] = useState<EditorState>(() => ({
+    sourcePolygon: polygonString,
+    editablePoints: points,
+    view: initialView,
+  }));
 
-  const [view, setView] = useState<ViewState>(initialView);
-
-  const [lastPolygon, setLastPolygon] = useState(polygonString);
-  if (polygonString !== lastPolygon) {
-    setLastPolygon(polygonString);
-    setView(initialView);
+  if (editorState.sourcePolygon !== polygonString) {
+    setEditorState({
+      sourcePolygon: polygonString,
+      editablePoints: points,
+      view: initialView,
+    });
   }
+
+  const { editablePoints, view } = editorState;
 
   // Handle window resize
   useEffect(() => {
@@ -113,47 +130,56 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
-    setView(prev => {
+    setEditorState(prev => {
       const newScale = Math.max(
         0.1,
-        Math.min(e.evt.deltaY > 0 ? prev.scale * 0.9 : prev.scale * 1.1, 5)
+        Math.min(e.evt.deltaY > 0 ? prev.view.scale * 0.9 : prev.view.scale * 1.1, 5)
       );
       return {
-        scale: newScale,
-        offsetX: pointer.x - (pointer.x - prev.offsetX) * (newScale / prev.scale),
-        offsetY: pointer.y - (pointer.y - prev.offsetY) * (newScale / prev.scale),
+        ...prev,
+        view: {
+          scale: newScale,
+          offsetX: pointer.x - (pointer.x - prev.view.offsetX) * (newScale / prev.view.scale),
+          offsetY: pointer.y - (pointer.y - prev.view.offsetY) * (newScale / prev.view.scale),
+        },
       };
     });
   };
 
   const handleZoomIn = () => {
-    setView(prev => {
+    setEditorState(prev => {
       const gridHeight = dimensions.height * 0.7;
       const gridWidth = dimensions.width;
       const gridCenterX = gridWidth / 2;
       const gridCenterY = gridHeight / 2;
 
-      const newScale = Math.min(prev.scale * 1.2, 5);
+      const newScale = Math.min(prev.view.scale * 1.2, 5);
       return {
-        scale: newScale,
-        offsetX: gridCenterX - (gridCenterX - prev.offsetX) * (newScale / prev.scale),
-        offsetY: gridCenterY - (gridCenterY - prev.offsetY) * (newScale / prev.scale),
+        ...prev,
+        view: {
+          scale: newScale,
+          offsetX: gridCenterX - (gridCenterX - prev.view.offsetX) * (newScale / prev.view.scale),
+          offsetY: gridCenterY - (gridCenterY - prev.view.offsetY) * (newScale / prev.view.scale),
+        },
       };
     });
   };
 
   const handleZoomOut = () => {
-    setView(prev => {
+    setEditorState(prev => {
       const gridHeight = dimensions.height * 0.7;
       const gridWidth = dimensions.width;
       const gridCenterX = gridWidth / 2;
       const gridCenterY = gridHeight / 2;
 
-      const newScale = Math.max(prev.scale * 0.8, 0.1);
+      const newScale = Math.max(prev.view.scale * 0.8, 0.1);
       return {
-        scale: newScale,
-        offsetX: gridCenterX - (gridCenterX - prev.offsetX) * (newScale / prev.scale),
-        offsetY: gridCenterY - (gridCenterY - prev.offsetY) * (newScale / prev.scale),
+        ...prev,
+        view: {
+          scale: newScale,
+          offsetX: gridCenterX - (gridCenterX - prev.view.offsetX) * (newScale / prev.view.scale),
+          offsetY: gridCenterY - (gridCenterY - prev.view.offsetY) * (newScale / prev.view.scale),
+        },
       };
     });
   };
@@ -171,10 +197,13 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isPanning) return;
-      setView(prev => ({
+      setEditorState(prev => ({
         ...prev,
-        offsetX: startOffsetX + (moveEvent.clientX - startX),
-        offsetY: startOffsetY + (moveEvent.clientY - startY),
+        view: {
+          ...prev.view,
+          offsetX: startOffsetX + (moveEvent.clientX - startX),
+          offsetY: startOffsetY + (moveEvent.clientY - startY),
+        },
       }));
     };
 
@@ -216,6 +245,60 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     return lines;
   };
 
+  const handleVertexDrag = (index: number, pointer: { x: number; y: number }) => {
+    setEditorState((prev) => {
+      let panX = 0;
+      let panY = 0;
+
+      if (pointer.x < EDGE_PAN_THRESHOLD) {
+        panX = EDGE_PAN_STEP;
+      } else if (pointer.x > dimensions.width - EDGE_PAN_THRESHOLD) {
+        panX = -EDGE_PAN_STEP;
+      }
+
+      if (pointer.y < EDGE_PAN_THRESHOLD) {
+        panY = EDGE_PAN_STEP;
+      } else if (pointer.y > dimensions.height - EDGE_PAN_THRESHOLD) {
+        panY = -EDGE_PAN_STEP;
+      }
+
+      const nextView = {
+        ...prev.view,
+        offsetX: prev.view.offsetX + panX,
+        offsetY: prev.view.offsetY + panY,
+      };
+
+      const nextPoint = {
+        x: (pointer.x - nextView.offsetX) / nextView.scale,
+        y: (pointer.y - nextView.offsetY) / nextView.scale,
+      };
+
+      const nextPoints = [...prev.editablePoints];
+      nextPoints[index] = nextPoint;
+
+      if (index === 0) {
+        nextPoints[nextPoints.length - 1] = nextPoint;
+      } else if (index === nextPoints.length - 1) {
+        nextPoints[0] = nextPoint;
+      }
+
+      return {
+        ...prev,
+        editablePoints: nextPoints,
+        view: nextView,
+      };
+    });
+  };
+
+  const handleUpdatePolygon = () => {
+    if (parseError || editablePoints.length < 3) return;
+
+    const nextWkt = canvasPointsToWkt(editablePoints, SCALE_FACTOR);
+    if (nextWkt) {
+      onPolygonChange(nextWkt);
+    }
+  };
+
   return (
     <div className="w-full h-[70%] bg-white overflow-hidden relative">
       {/* Alert positioned outside Stage to avoid z-index issues */}
@@ -241,28 +324,30 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
           y={view.offsetY}
         >
           {renderGrid(50)}
-          {points.length > 0 && (
-            <Line
-              points={points.flatMap(p => [p.x, p.y])}
-              closed
-              stroke="blue"
-              strokeWidth={2 / view.scale}
-              fill="rgba(0, 0, 255, 0.1)"
+          {editablePoints.length > 0 && (
+            <PolygonEditor
+              points={editablePoints}
+              scale={view.scale}
+              onVertexDrag={handleVertexDrag}
             />
           )}
         </Layer>
       </Stage>
 
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
-        <button onClick={handleZoomIn} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded shadow-lg transition" title="Zoom In">
+      <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+        <button onClick={handleZoomIn} className="flex h-10 w-10 items-center justify-center rounded bg-blue-500 text-white shadow-lg transition hover:bg-blue-600" title="Zoom In">
           <Plus size={20} />
         </button>
-        <button onClick={handleZoomOut} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded shadow-lg transition" title="Zoom Out">
+        <button onClick={handleZoomOut} className="flex h-10 w-10 items-center justify-center rounded bg-blue-500 text-white shadow-lg transition hover:bg-blue-600" title="Zoom Out">
           <Minus size={20} />
         </button>
-        {/* <button className="bg-green-500 hover:bg-green-600 text-white p-2 rounded shadow-lg transition" title="Draw Polygon">
-          <Pentagon size={20} />
-        </button> */}
+        <Button
+          className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
+          disabled={Boolean(parseError) || editablePoints.length < 3}
+          onClick={handleUpdatePolygon}
+        >
+          Update WKT
+        </Button>
       </div>
     </div>
   );
