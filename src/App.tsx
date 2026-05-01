@@ -3,7 +3,7 @@ import FormSection from "./components/core/FormSection"
 import GridSection from "./components/core/GridSection"
 
 export const App = () => {
-  const initPolygon = ""
+  const initPolygon = "POLYGON ((-57.480469 29.916852, -60.029297 24.846565, -55.349121 23.604262, -52.998047 26.68673, -54.294434 29.094577, -55.898438 30.088108, -57.480469 29.916852))"
   const [wktData, setWktData] = useState(initPolygon)
 
   const handleReset = () => {
