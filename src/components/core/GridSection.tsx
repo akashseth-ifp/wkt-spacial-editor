@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
-import { Plus, Minus, Pentagon } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
 import { WKTErrorAlert } from '@/components/custom/WKTErrorAlert';
 import { SCALE_FACTOR, wktToPoints, type Point } from '@/lib/utils';
 
@@ -260,9 +260,9 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
         <button onClick={handleZoomOut} className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded shadow-lg transition" title="Zoom Out">
           <Minus size={20} />
         </button>
-        <button className="bg-green-500 hover:bg-green-600 text-white p-2 rounded shadow-lg transition" title="Draw Polygon">
+        {/* <button className="bg-green-500 hover:bg-green-600 text-white p-2 rounded shadow-lg transition" title="Draw Polygon">
           <Pentagon size={20} />
-        </button>
+        </button> */}
       </div>
     </div>
   );
