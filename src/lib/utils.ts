@@ -20,27 +20,22 @@ export interface Point {
  * @returns Array of Point objects with x and y coordinates
  */
 export function wktToPoints(wktPolygon: string): Point[] {
-  try {
-    const parsed = wkt.parse(wktPolygon);
-    
-    if (!parsed || parsed.type !== 'Polygon') {
-      throw new Error('Invalid WKT Polygon format');
-    }
-
-    // Extract coordinates from the first ring (outer ring)
-    const coordinates = parsed.coordinates[0];
-    
-    // Convert [longitude, latitude] to Point objects
-    const points: Point[] = coordinates.map(([x, y]) => ({
-      x,
-      y,
-    }));
-
-    return points;
-  } catch (error) {
-    console.error('Error parsing WKT Polygon:', error);
-    return [];
+  const parsed = wkt.parse(wktPolygon);
+  
+  if (!parsed || parsed.type !== 'Polygon') {
+    throw new Error('Invalid WKT Polygon format');
   }
+
+  // Extract coordinates from the first ring (outer ring)
+  const coordinates = parsed.coordinates[0];
+  
+  // Convert [longitude, latitude] to Point objects
+  const points: Point[] = coordinates.map(([x, y]) => ({
+    x,
+    y,
+  }));
+
+  return points;
 }
 
 /**

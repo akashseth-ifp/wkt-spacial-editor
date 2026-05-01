@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Stage, Layer, Line } from 'react-konva';
 import Konva from 'konva';
 import { Plus, Minus, Pentagon } from 'lucide-react';
+import { WKTErrorAlert } from '@/components/custom/WKTErrorAlert';
 import { SCALE_FACTOR, wktToPoints, type Point } from '@/lib/utils';
 
 type GridSectionProps = {
@@ -59,24 +60,31 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     height: window.innerHeight,
   });
 
-  const rawPoints = useMemo(
-    () => (polygonString ? wktToPoints(polygonString) : []),
-    [polygonString]
-  );
+  const parsingResult = useMemo(() => {
+    if (!polygonString) {
+      return { points: [], error: null };
+    }
+    try {
+      return { points: wktToPoints(polygonString), error: null };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to parse WKT data';
+      return { points: [], error: errorMessage };
+    }
+  }, [polygonString]);
+
+  const rawPoints = parsingResult.points;
+  const parseError = parsingResult.error;
 
   const points = useMemo(() => scalePoints(rawPoints), [rawPoints]);
 
   const initialView = useMemo(
     () => computeAutoFit(points, dimensions),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [polygonString] // only recompute when the polygon itself changes, not on pan/zoom
+    [polygonString]
   );
 
-  // Using polygonString as key on the parent resets this state automatically,
-  // but we can also just reinitialize when initialView changes via useState(initialView)
   const [view, setView] = useState<ViewState>(initialView);
 
-  // Sync view when polygon changes (not on every render)
   const [lastPolygon, setLastPolygon] = useState(polygonString);
   if (polygonString !== lastPolygon) {
     setLastPolygon(polygonString);
@@ -118,7 +126,7 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     });
   };
 
-    const handleZoomIn = () => {
+  const handleZoomIn = () => {
     setView(prev => {
       const gridHeight = dimensions.height * 0.7;
       const gridWidth = dimensions.width;
@@ -150,9 +158,7 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     });
   };
 
-     // Pan handler
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Allow panning on stage or layer, but not on draggable shapes
     if (e.target.draggable?.()) return;
 
     let isPanning = true;
@@ -161,7 +167,6 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     const startOffsetX = view.offsetX;
     const startOffsetY = view.offsetY;
 
-    // Change cursor to grabbing
     document.body.style.cursor = 'grabbing';
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -175,7 +180,6 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
 
     const handleMouseUp = () => {
       isPanning = false;
-      // Reset cursor to default
       document.body.style.cursor = 'default';
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -185,7 +189,6 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Render grid lines
   const renderGrid = (gridSize = 50) => {
     const lines = [];
     const visibleStartX = -view.offsetX / view.scale;
@@ -215,6 +218,14 @@ export const GridSection = ({ polygonString }: GridSectionProps) => {
 
   return (
     <div className="w-full h-[70%] bg-white overflow-hidden relative">
+      {/* Alert positioned outside Stage to avoid z-index issues */}
+      {parseError && (
+        <WKTErrorAlert 
+          message={parseError} 
+          onClose={() => {}} 
+        />
+      )}
+
       <Stage
         ref={stageRef}
         width={dimensions.width}
