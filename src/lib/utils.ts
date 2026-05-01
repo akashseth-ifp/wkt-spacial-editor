@@ -14,6 +14,12 @@ export interface Point {
   y: number;
 }
 
+type PolygonCoordinate = [number, number];
+type ParsedPolygon = {
+  type: 'Polygon';
+  coordinates: PolygonCoordinate[][];
+};
+
 /**
  * Convert WKT Polygon string to array of Points for react-konva rendering
  * @param wktPolygon - WKT format string, e.g., "POLYGON ((-64.8 32.3, -65.5 18.3, -80.3 25.2, -64.8 32.3))"
@@ -26,11 +32,13 @@ export function wktToPoints(wktPolygon: string): Point[] {
     throw new Error('Invalid WKT Polygon format');
   }
 
+  const polygon = parsed as ParsedPolygon;
+
   // Extract coordinates from the first ring (outer ring)
-  const coordinates = parsed.coordinates[0];
+  const coordinates = polygon.coordinates[0];
   
   // Convert [longitude, latitude] to Point objects
-  const points: Point[] = coordinates.map(([x, y]) => ({
+  const points: Point[] = coordinates.map(([x, y]: PolygonCoordinate) => ({
     x,
     y,
   }));
@@ -100,4 +108,3 @@ export function canvasPointsToWkt(canvasPoints: Point[], scaleFactor: number = S
   const unscaledPoints = unscalePoints(canvasPoints, scaleFactor);
   return pointsToWkt(unscaledPoints);
 }
-
