@@ -4,6 +4,7 @@ import Konva from 'konva';
 import { Plus, Minus } from 'lucide-react';
 import { WKTErrorAlert } from '@/components/custom/WKTErrorAlert';
 import { PolygonEditor } from '@/components/custom/PolygonEditor';
+import type { EdgeOverlay } from '@/types/utils';
 import { SCALE_FACTOR, wktToPoints, canvasPointsToWkt, type Point } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -26,12 +27,94 @@ type EditorState = {
 
 const EDGE_PAN_THRESHOLD = 48;
 const EDGE_PAN_STEP = 18;
+const LABEL_OFFSET_PX = 34;
+
+const arePointsEqual = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
+
+const getPolygonVertices = (points: Point[]) => {
+  if (points.length < 2) return points;
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  return arePointsEqual(firstPoint, lastPoint) ? points.slice(0, -1) : points;
+};
 
 const scalePoints = (points: Point[]): Point[] =>
   points.map(point => ({
     x: point.x * SCALE_FACTOR,
     y: point.y * SCALE_FACTOR,
   }));
+
+const unscalePoint = (point: Point): Point => ({
+  x: point.x / SCALE_FACTOR,
+  y: point.y / SCALE_FACTOR,
+});
+
+const formatEdgeLength = (length: number) => length.toFixed(2);
+
+const computeCentroid = (points: Point[]): Point => {
+  if (points.length === 0) return { x: 0, y: 0 };
+
+  const total = points.reduce(
+    (accumulator, point) => ({
+      x: accumulator.x + point.x,
+      y: accumulator.y + point.y,
+    }),
+    { x: 0, y: 0 }
+  );
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length,
+  };
+};
+
+const buildEdgeOverlays = (points: Point[], scale: number): EdgeOverlay[] => {
+  const vertices = getPolygonVertices(points);
+  if (vertices.length < 2) return [];
+
+  const centroid = computeCentroid(vertices);
+  const labelOffset = LABEL_OFFSET_PX / scale;
+
+  return vertices.map((start, index) => {
+    const end = vertices[(index + 1) % vertices.length];
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    const edgeLength = Math.hypot(deltaX, deltaY);
+    const midpoint = {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    };
+
+    const normalA = edgeLength === 0 ? { x: 0, y: -1 } : { x: -deltaY / edgeLength, y: deltaX / edgeLength };
+    const normalB = { x: -normalA.x, y: -normalA.y };
+    const centroidVector = {
+      x: midpoint.x - centroid.x,
+      y: midpoint.y - centroid.y,
+    };
+    const outwardNormal =
+      centroidVector.x * normalA.x + centroidVector.y * normalA.y >= 0 ? normalA : normalB;
+
+    const labelPosition = {
+      x: midpoint.x + outwardNormal.x * labelOffset,
+      y: midpoint.y + outwardNormal.y * labelOffset,
+    };
+
+    const rawStart = unscalePoint(start);
+    const rawEnd = unscalePoint(end);
+    const length = Math.hypot(rawEnd.x - rawStart.x, rawEnd.y - rawStart.y);
+
+    return {
+      id: `edge-${index}`,
+      start,
+      end,
+      midpoint,
+      labelPosition,
+      length,
+      label: formatEdgeLength(length),
+    };
+  });
+};
 
 const computeAutoFit = (
   points: Point[],
@@ -66,6 +149,7 @@ const computeAutoFit = (
 export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps) => {
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
+  const previousSourcePolygonRef = useRef(polygonString);
 
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
@@ -97,16 +181,25 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
     editablePoints: points,
     view: initialView,
   }));
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set());
 
-  if (editorState.sourcePolygon !== polygonString) {
+  useEffect(() => {
+    if (previousSourcePolygonRef.current === polygonString) return;
+
+    previousSourcePolygonRef.current = polygonString;
     setEditorState({
       sourcePolygon: polygonString,
       editablePoints: points,
       view: initialView,
     });
-  }
+    setSelectedEdgeIds(new Set());
+  }, [initialView, points, polygonString]);
 
   const { editablePoints, view } = editorState;
+  const edgeOverlays = useMemo(
+    () => buildEdgeOverlays(editablePoints, view.scale),
+    [editablePoints, view.scale]
+  );
 
   // Handle window resize
   useEffect(() => {
@@ -186,6 +279,7 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     if (e.target.draggable?.()) return;
+    if (e.target.hasName('edge-checkbox')) return;
 
     let isPanning = true;
     const startX = e.evt.clientX;
@@ -299,6 +393,18 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
     }
   };
 
+  const handleEdgeToggle = (edgeId: string) => {
+    setSelectedEdgeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(edgeId)) {
+        next.delete(edgeId);
+      } else {
+        next.add(edgeId);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="w-full h-[70%] bg-white overflow-hidden relative">
       {/* Alert positioned outside Stage to avoid z-index issues */}
@@ -327,7 +433,10 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
           {editablePoints.length > 0 && (
             <PolygonEditor
               points={editablePoints}
+              edgeOverlays={edgeOverlays}
               scale={view.scale}
+              selectedEdgeIds={selectedEdgeIds}
+              onEdgeToggle={handleEdgeToggle}
               onVertexDrag={handleVertexDrag}
             />
           )}
