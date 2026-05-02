@@ -134,7 +134,7 @@ const computeAutoFit = (
   const polygonWidth = maxX - minX + paddingPixels;
   const polygonHeight = maxY - minY + paddingPixels;
 
-  const gridHeight = dimensions.height * 0.7;
+  const gridHeight = dimensions.height;
   const gridWidth = dimensions.width;
 
   const zoomLevel = Math.min(gridWidth / polygonWidth, gridHeight / polygonHeight);
@@ -147,13 +147,14 @@ const computeAutoFit = (
 };
 
 export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const previousSourcePolygonRef = useRef(polygonString);
 
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
-    height: window.innerHeight,
+    height: Math.round(window.innerHeight * 0.7),
   });
 
   const parsingResult = useMemo(() => {
@@ -203,14 +204,41 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
 
   // Handle window resize
   useEffect(() => {
-    const handleResize = () => {
-      setDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight,
+    const updateDimensions = () => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const nextWidth = container.clientWidth;
+      const nextHeight = container.clientHeight;
+
+      setDimensions((prev) => {
+        if (prev.width === nextWidth && prev.height === nextHeight) {
+          return prev;
+        }
+
+        return {
+          width: nextWidth,
+          height: nextHeight,
+        };
       });
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    updateDimensions();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateDimensions();
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    window.addEventListener('resize', updateDimensions);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateDimensions);
+    };
   }, []);
 
   // Zoom handler
@@ -241,10 +269,8 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
 
   const handleZoomIn = () => {
     setEditorState(prev => {
-      const gridHeight = dimensions.height * 0.7;
-      const gridWidth = dimensions.width;
-      const gridCenterX = gridWidth / 2;
-      const gridCenterY = gridHeight / 2;
+      const gridCenterX = dimensions.width / 2;
+      const gridCenterY = dimensions.height / 2;
 
       const newScale = Math.min(prev.view.scale * 1.2, 5);
       return {
@@ -260,10 +286,8 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
 
   const handleZoomOut = () => {
     setEditorState(prev => {
-      const gridHeight = dimensions.height * 0.7;
-      const gridWidth = dimensions.width;
-      const gridCenterX = gridWidth / 2;
-      const gridCenterY = gridHeight / 2;
+      const gridCenterX = dimensions.width / 2;
+      const gridCenterY = dimensions.height / 2;
 
       const newScale = Math.max(prev.view.scale * 0.8, 0.1);
       return {
@@ -406,7 +430,7 @@ export const GridSection = ({ polygonString, onPolygonChange }: GridSectionProps
   };
 
   return (
-    <div className="w-full h-[70%] bg-white overflow-hidden relative">
+    <div ref={containerRef} className="w-full h-[70%] bg-white overflow-hidden relative">
       {/* Alert positioned outside Stage to avoid z-index issues */}
       {parseError && (
         <WKTErrorAlert 
